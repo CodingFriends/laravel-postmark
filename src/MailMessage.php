@@ -47,4 +47,11 @@ class MailMessage extends Message
 
         return $this;
     }
+
+    public function messageStream(string $messageStream): self
+    {
+        return $this->withSwiftMessage(function (\Swift_Message $message) use ($messageStream) {
+            $message->getHeaders()->addTextHeader('X-PM-Message-Stream', $messageStream);
+        });
+    }
 }

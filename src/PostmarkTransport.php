@@ -218,6 +218,13 @@ class PostmarkTransport extends Transport
         return optional($tags->last())->getFieldBody() ?: '';
     }
 
+    protected function getMessageStream(Swift_Mime_SimpleMessage $message): string
+    {
+        $messageStream = $message->getHeaders()->get('X-PM-Message-Stream');
+
+        return optional($messageStream)->getFieldBody() ?: '';
+    }
+
     protected function payload(Swift_Mime_SimpleMessage $message): array
     {
         $headers = [
@@ -236,6 +243,7 @@ class PostmarkTransport extends Transport
             'Metadata' => $this->getMetadata($message),
             'ReplyTo' => $this->getContacts($message->getReplyTo()),
             'Attachments' => $this->getAttachments($message),
+            'MessageStream' => $this->getMessageStream($message),
         ];
 
         if ($contents = $this->templated($message)) {
