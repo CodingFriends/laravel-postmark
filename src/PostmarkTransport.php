@@ -6,13 +6,16 @@ use Coconuts\Mail\Exceptions\PostmarkException;
 use function collect;
 use function json_decode;
 use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\ServerException;
 use Illuminate\Mail\Transport\Transport;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Psr\Http\Message\ResponseInterface;
-use Swift_Attachment;
+use Swift_Mime_Attachment;
 use Swift_Mime_SimpleMessage;
 use Swift_MimePart;
+use Swift_TransportException;
 
 class PostmarkTransport extends Transport
 {
@@ -54,16 +57,21 @@ class PostmarkTransport extends Transport
      * @return int
      *
      * @throws \GuzzleHttp\Exception\GuzzleException
+     * @throws \Swift_TransportException
      */
     public function send(Swift_Mime_SimpleMessage $message, &$failedRecipients = null): int
     {
         $this->beforeSendPerformed($message);
 
-        $response = $this->client->request(
-            'POST',
-            $this->getApiEndpoint($message),
-            $this->payload($message)
-        );
+        try {
+            $response = $this->client->request(
+                'POST',
+                $this->getApiEndpoint($message),
+                $this->payload($message)
+            );
+        } catch (ConnectException | ServerException $exception) {
+            throw new Swift_TransportException($exception->getMessage(), $exception->getCode(), $exception);
+        }
 
         $messageId = $this->getMessageId($response);
 
@@ -79,14 +87,20 @@ class PostmarkTransport extends Transport
     {
         return collect($message->getChildren())
             ->filter(function ($child) {
-                return $child instanceof Swift_Attachment;
+                return $child instanceof Swift_Mime_Attachment;
             })
             ->map(function ($child) {
-                return [
+                $attributes = [
                     'Name' => $child->getHeaders()->get('content-type')->getParameter('name'),
                     'Content' => base64_encode($child->getBody()),
                     'ContentType' => $child->getContentType(),
                 ];
+
+                if ($child->getDisposition() !== 'attachment' && $child->getId() !== null) {
+                    $attributes['ContentID'] = 'cid:' . $child->getId();
+                }
+
+                return $attributes;
             })
             ->values()
             ->toArray();
